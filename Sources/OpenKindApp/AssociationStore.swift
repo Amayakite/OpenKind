@@ -43,6 +43,12 @@ struct FileAssociation: Identifiable {
         var seen = Set<String>()
         return urls.filter { seen.insert($0.standardizedFileURL.path).inserted }
     }
+    func remember(_ extensions: [String]) {
+        var custom = UserDefaults.standard.stringArray(forKey: customKey) ?? []
+        for ext in extensions where !FileCatalog.builtIn.contains(ext) && !custom.contains(ext) { custom.append(ext) }
+        UserDefaults.standard.set(custom, forKey: customKey)
+        reload()
+    }
     func apply(_ app: URL, to item: FileAssociation) {
         guard let type = item.type else { errorMessage = L("系统尚未识别此文件类型。请先安装支持此格式的应用。", "macOS does not recognize this type. Install a compatible app first."); return }
         isApplying = true

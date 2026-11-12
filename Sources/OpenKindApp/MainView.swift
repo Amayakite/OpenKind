@@ -1,8 +1,9 @@
 import SwiftUI
 import AppKit
 import OpenKindCore
+import UniformTypeIdentifiers
 
-private enum Page { case types, apps, assistant, settings }
+private enum Page { case types, apps, settings }
 private enum Design {
     static let blue = Color(red: 0.22, green: 0.39, blue: 0.92)
     static let canvas = Color(nsColor: .windowBackgroundColor)
@@ -12,13 +13,12 @@ private enum Design {
 struct MainView: View {
     @StateObject private var store = AssociationStore()
     @StateObject private var appCatalog = ApplicationCatalog()
-    @StateObject private var aiSettings = AISettingsStore()
     @AppStorage(AppLanguage.preferenceKey) private var language = AppLanguage.system.rawValue
     @State private var page: Page = .types
     @State private var category: FileCategory?
     @State private var query = ""
     @State private var selectedApp: URL?
-    @State private var assistantApp: DiscoveredApplication?
+    @State private var showBatch = false
     @State private var selectedType: FileAssociation?
     @State private var showAdd = false
     @State private var newExtension = ""
@@ -46,9 +46,7 @@ struct MainView: View {
             Rectangle().fill(Design.line).frame(width: 1)
             VStack(alignment: .leading, spacing: 0) {
                 if page == .settings {
-                    GeneralSettingsView(settings: aiSettings)
-                } else if page == .assistant {
-                    AssistantView(store: store, settings: aiSettings, appCatalog: appCatalog, selectedApp: $assistantApp)
+                    GeneralSettingsView()
                 } else {
                     header
                     if page == .types { typeContent } else { appContent }
@@ -60,6 +58,7 @@ struct MainView: View {
         .environment(\.locale, language == "system" ? .autoupdatingCurrent : Locale(identifier: language))
         .onAppear { store.reload(); appCatalog.reload(extra: store.items.compactMap(\.appURL)) }
         .sheet(item: $selectedType) { item in AppPicker(item: item, store: store) }
+        .sheet(isPresented: $showBatch) { if let app = selectedApp { BatchAssociationView(app: app, store: store) } }
         .sheet(isPresented: $showAdd) { addSheet }
         .alert(L("无法完成操作", "Could not complete the action"), isPresented: Binding(get: { store.errorMessage != nil }, set: { if !$0 { store.errorMessage = nil } })) {
             Button(L("好", "OK")) { store.errorMessage = nil }
@@ -78,9 +77,8 @@ struct MainView: View {
             Text(L("管理方式", "Manage")).font(.system(size: 11, weight: .semibold)).foregroundStyle(.tertiary).padding(.horizontal, 23).padding(.bottom, 9)
             sidebarButton(L("文件类型", "File types"), subtitle: L("按扩展名管理", "Manage by extension"), symbol: "doc.on.doc", selected: page == .types) { page = .types; query = "" }
             sidebarButton(L("应用", "Apps"), subtitle: L("查看应用关联", "View app associations"), symbol: "square.stack.3d.up", selected: page == .apps) { page = .apps; query = ""; category = nil }
-            sidebarButton(L("AI 助理", "AI assistant"), subtitle: L("获取配置建议", "Get recommendations"), symbol: "sparkles", selected: page == .assistant) { page = .assistant; query = ""; category = nil }
             Spacer()
-            sidebarButton(L("设置", "Settings"), subtitle: L("语言与服务", "Language and providers"), symbol: "gearshape", selected: page == .settings) { page = .settings }
+            sidebarButton(L("设置", "Settings"), subtitle: L("显示语言", "Display language"), symbol: "gearshape", selected: page == .settings) { page = .settings }
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "person.crop.circle").font(.system(size: 16)).foregroundStyle(Design.blue)
                 VStack(alignment: .leading, spacing: 4) {
@@ -117,6 +115,8 @@ struct MainView: View {
                 if page == .types {
                     Button { newExtension = ""; addError = nil; showAdd = true } label: { Label(L("添加类型", "Add type"), systemImage: "plus").padding(.vertical, 2) }
                         .buttonStyle(.borderedProminent).tint(Design.blue)
+                } else {
+                    Button(L("选择其他应用…", "Choose another app…")) { chooseOtherApplication() }
                 }
             }.padding(.top, 38).padding(.bottom, 23)
             HStack(spacing: 9) {
@@ -200,10 +200,7 @@ struct MainView: View {
                         VStack(alignment: .leading, spacing: 4) { Text(appName(app)).font(.system(size: 16, weight: .semibold)); Text(L("当前是 \(associated(app).count) 种列表内格式的默认应用", "Default for \(associated(app).count) listed file types")).font(.system(size: 11)).foregroundStyle(.secondary)
                             Text(appCatalog.apps.first(where: { $0.id == app })?.hasDocumentDeclarations == true ? L("应用声明了文件类型", "The app declares document types") : L("未声明文件类型，仍可能支持打开文件", "No document types declared; it may still open files")).font(.system(size: 10)).foregroundStyle(.secondary) }
                         Spacer()
-                        Button(L("AI 推荐", "AI suggestions")) {
-                            assistantApp = appCatalog.apps.first(where: { $0.id == app }) ?? DiscoveredApplication(url: app)
-                            page = .assistant
-                        }
+                        Button(L("关联文件类型…", "Associate file types…")) { showBatch = true }.disabled(store.isApplying)
                     }.padding(18)
                     Divider()
                     ScrollView { LazyVStack(spacing: 0) {
@@ -218,6 +215,13 @@ struct MainView: View {
         }.background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
             .clipShape(RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).stroke(Design.line))
             .padding(.horizontal, 32).padding(.top, 20).padding(.bottom, 14).frame(maxHeight: .infinity)
+    }
+    private func chooseOtherApplication() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.application]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        panel.canChooseDirectories = false
+        if panel.runModal() == .OK, let app = panel.url { appCatalog.include(app); selectedApp = app; query = "" }
     }
     private var footer: some View {
         HStack(spacing: 6) {

@@ -2,9 +2,7 @@ import SwiftUI
 import OpenKindCore
 
 struct GeneralSettingsView: View {
-    @ObservedObject var settings: AISettingsStore
     @AppStorage(AppLanguage.preferenceKey) private var language = AppLanguage.system.rawValue
-    @State private var showProviders = false
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             VStack(alignment: .leading, spacing: 7) {
@@ -20,13 +18,7 @@ struct GeneralSettingsView: View {
                     Text("English").tag(AppLanguage.english.rawValue)
                 }.pickerStyle(.menu).frame(maxWidth: 360, alignment: .leading)
             }.padding(18).frame(maxWidth: .infinity, alignment: .leading).background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 11))
-            VStack(alignment: .leading, spacing: 14) {
-                Label(L("AI 服务", "AI providers"), systemImage: "sparkles").font(.system(size: 15, weight: .semibold))
-                Text(L("添加、编辑服务配置并选择启用项。", "Add and edit provider profiles, and choose the active one.")).font(.callout).foregroundStyle(.secondary)
-                Button(L("管理 AI 服务…", "Manage AI providers…")) { showProviders = true }
-            }.padding(18).frame(maxWidth: .infinity, alignment: .leading).background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 11))
             Spacer()
         }.padding(.horizontal, 32).frame(maxWidth: .infinity, maxHeight: .infinity)
-        .sheet(isPresented: $showProviders) { AISettingsView(settings: settings) }
     }
 }
