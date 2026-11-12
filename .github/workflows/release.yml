@@ -1,0 +1,90 @@
+name: Release
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: macos-15
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Determine version
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            if [[ ! "$REF_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(-[0-9A-Za-z.-]+)?$ ]]; then
+              echo "Invalid version tag: expected vX.Y.Z or vX.Y.Z-prerelease" >&2
+              exit 1
+            fi
+            echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+            echo "tag=$REF_NAME" >> "$GITHUB_OUTPUT"
+            if [[ -n "${BASH_REMATCH[2]}" ]]; then echo 'prerelease=true' >> "$GITHUB_OUTPUT"; else echo 'prerelease=false' >> "$GITHUB_OUTPUT"; fi
+          else
+            echo 'version=0.0.0' >> "$GITHUB_OUTPUT"
+            echo 'tag=dry-run' >> "$GITHUB_OUTPUT"
+            echo 'prerelease=true' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Check core logic
+        run: swift run OpenKindChecks
+      - name: Build universal application
+        env:
+          OPENKIND_UNIVERSAL: '1'
+          OPENKIND_VERSION: ${{ steps.version.outputs.version }}
+          OPENKIND_BUILD_NUMBER: ${{ github.run_number }}
+        run: ./scripts/build-app.sh
+      - name: Verify and package
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          codesign --verify --deep --strict --verbose=1 build/OpenKind.app
+          lipo build/OpenKind.app/Contents/MacOS/OpenKind -verify_arch arm64 x86_64
+          mkdir -p dist
+          ARCHIVE="OpenKind-${RELEASE_TAG}-macOS-universal.zip"
+          ditto -c -k --sequesterRsrc --keepParent build/OpenKind.app "dist/$ARCHIVE"
+          (cd dist && shasum -a 256 "$ARCHIVE" > SHA256SUMS.txt && shasum -a 256 -c SHA256SUMS.txt)
+      - name: Upload packaged application
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenKind-${{ steps.version.outputs.tag }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download packaged application
+        uses: actions/download-artifact@v4
+        with:
+          name: OpenKind-${{ needs.package.outputs.tag }}
+          path: dist
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.package.outputs.tag }}
+          PRERELEASE: ${{ needs.package.outputs.prerelease }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=("$RELEASE_TAG" dist/*.zip dist/SHA256SUMS.txt --verify-tag --title "OpenKind $RELEASE_TAG" --generate-notes --notes "Universal macOS 14+ build (Apple Silicon and Intel). This build is ad-hoc signed and is not notarized by Apple.")
+          if [[ "$PRERELEASE" == true ]]; then args+=(--prerelease --latest=false); fi
+          gh release create "${args[@]}"

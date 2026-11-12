@@ -13,9 +13,13 @@
 
 列表由内置常见扩展名和用户手动添加的扩展名组成，**不是系统全部文件类型的完整清单**。应用页同样只统计这份列表。实际可选应用和格式兼容性取决于 macOS 与应用自身声明；更改时系统可能要求确认。
 
+## 下载
+
+从 [GitHub Releases](https://github.com/Amayakite/OpenKind/releases) 下载 macOS 通用版本。发布包支持 Apple Silicon 和 Intel，要求 macOS 14 或更高版本。应用尚未经过 Apple 公证，首次打开可能需要系统确认。
+
 ## 运行与构建
 
-要求 macOS 14 或更新版本，以及安装 Swift 的 Xcode 或 Apple Command Line Tools。当前构建针对执行构建的本机架构，未签发 Developer ID 签名或 Apple 公证。
+要求 macOS 14 或更新版本，以及安装 Swift 的 Xcode 或 Apple Command Line Tools。默认构建针对本机架构；可按[发布说明](docs/RELEASING.md)构建通用版本。所有构建尚未签发 Developer ID 签名或 Apple 公证。
 
 ```sh
 # 验证扩展名处理和分类逻辑
@@ -43,7 +47,9 @@ OpenKind 通过 macOS `NSWorkspace` 和 `UTType` 读取、修改当前用户的�
 - `Sources/OpenKindChecks`：无需完整 Xcode 的核心逻辑检查。
 - `Assets/AppIcon.icns` 和 `Assets/AppIcon.png`：应用图标和预览；`scripts/make-icon.swift` 可重新生成图标集。
 - `scripts/build-app.sh`：构建并本地签名应用包。
-- `.github/workflows/ci.yml`：macOS 构建和核心逻辑检查。
+- `.github/workflows/`：macOS 持续集成和标签触发的自动发布。
+- `docs/RELEASING.md`：版本发布方法。
+- `docs/AI-ASSISTANT-PLAN.md`：AI 助理规划（尚未实现）。
 
 ## 限制与后续方向
 

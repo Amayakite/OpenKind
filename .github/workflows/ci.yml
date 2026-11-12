@@ -1,13 +1,16 @@
-name: macOS
+name: CI
 on:
   push:
+    branches: ['**']
   pull_request:
+permissions:
+  contents: read
 jobs:
   build-and-test:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      - name: Test
+      - name: Check core logic
         run: swift run OpenKindChecks
       - name: Build application
         run: ./scripts/build-app.sh
