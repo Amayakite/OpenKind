@@ -11,12 +11,14 @@ private enum Design {
 
 struct MainView: View {
     @StateObject private var store = AssociationStore()
+    @StateObject private var appCatalog = ApplicationCatalog()
     @StateObject private var aiSettings = AISettingsStore()
     @AppStorage(AppLanguage.preferenceKey) private var language = AppLanguage.system.rawValue
     @State private var page: Page = .types
     @State private var category: FileCategory?
     @State private var query = ""
     @State private var selectedApp: URL?
+    @State private var assistantApp: DiscoveredApplication?
     @State private var selectedType: FileAssociation?
     @State private var showAdd = false
     @State private var newExtension = ""
@@ -30,9 +32,7 @@ struct MainView: View {
         }
     }
     private var apps: [URL] {
-        var seen = Set<String>()
-        return store.items.compactMap(\.appURL).filter { seen.insert($0.standardizedFileURL.path).inserted }
-            .sorted { appName($0).localizedStandardCompare(appName($1)) == .orderedAscending }
+        appCatalog.apps.map(\.url)
     }
     private var filteredApps: [URL] {
         query.isEmpty ? apps : apps.filter { appName($0).localizedCaseInsensitiveContains(query) }
@@ -48,7 +48,7 @@ struct MainView: View {
                 if page == .settings {
                     GeneralSettingsView(settings: aiSettings)
                 } else if page == .assistant {
-                    AssistantView(store: store, settings: aiSettings)
+                    AssistantView(store: store, settings: aiSettings, appCatalog: appCatalog, selectedApp: $assistantApp)
                 } else {
                     header
                     if page == .types { typeContent } else { appContent }
@@ -58,7 +58,7 @@ struct MainView: View {
         }
         .frame(minWidth: 940, minHeight: 620)
         .environment(\.locale, language == "system" ? .autoupdatingCurrent : Locale(identifier: language))
-        .onAppear { store.reload() }
+        .onAppear { store.reload(); appCatalog.reload(extra: store.items.compactMap(\.appURL)) }
         .sheet(item: $selectedType) { item in AppPicker(item: item, store: store) }
         .sheet(isPresented: $showAdd) { addSheet }
         .alert(L("无法完成操作", "Could not complete the action"), isPresented: Binding(get: { store.errorMessage != nil }, set: { if !$0 { store.errorMessage = nil } })) {
@@ -108,11 +108,11 @@ struct MainView: View {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 7) {
                     Text(page == .types ? L("文件类型", "File types") : L("应用关联", "App associations")).font(.system(size: 28, weight: .bold))
-                    Text(page == .types ? L("为每种文件选择顺手的打开方式。", "Choose how each file type opens.") : L("查看应用当前默认打开的文件类型。", "See the file types each app opens by default."))
+                    Text(page == .types ? L("为每种文件选择顺手的打开方式。", "Choose how each file type opens.") : L("查看常见位置中的已安装应用及其默认关联。", "Browse installed apps in common locations and their defaults."))
                         .font(.system(size: 13)).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button { store.reload(); store.notice = L("已读取最新设置", "Settings refreshed") } label: { Image(systemName: "arrow.clockwise").frame(width: 30, height: 28) }
+                Button { store.reload(); appCatalog.reload(extra: store.items.compactMap(\.appURL)); store.notice = L("已读取最新设置", "Settings refreshed") } label: { Image(systemName: "arrow.clockwise").frame(width: 30, height: 28) }
                     .help(L("刷新默认应用", "Refresh defaults"))
                 if page == .types {
                     Button { newExtension = ""; addError = nil; showAdd = true } label: { Label(L("添加类型", "Add type"), systemImage: "plus").padding(.vertical, 2) }
@@ -182,14 +182,14 @@ struct MainView: View {
                                 ApplicationIcon(url: app, size: 34)
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(appName(app)).font(.system(size: 12, weight: .semibold)).lineLimit(1)
-                                    Text(L("\(associated(app).count) 种文件类型", "\(associated(app).count) file types")).font(.system(size: 10)).foregroundStyle(.secondary)
+                                    Text(associated(app).isEmpty ? L("暂无列表内默认关联", "No defaults in this list") : L("\(associated(app).count) 种默认类型", "\(associated(app).count) defaults")).font(.system(size: 10)).foregroundStyle(.secondary)
                                 }
                                 Spacer(minLength: 0)
                                 Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold)).foregroundStyle(.tertiary)
                             }.padding(9).contentShape(Rectangle()).background(selectedApp == app ? Design.blue.opacity(0.09) : .clear, in: RoundedRectangle(cornerRadius: 9))
                         }.buttonStyle(.plain)
                     }
-                    if filteredApps.isEmpty { Text(L("没有找到应用", "No apps found")).font(.caption).foregroundStyle(.secondary).padding(22) }
+                    if filteredApps.isEmpty { Text(appCatalog.loading ? L("正在查找应用…", "Finding apps…") : L("没有找到应用", "No apps found")).font(.caption).foregroundStyle(.secondary).padding(22) }
                 }.padding(9)
             }.frame(width: 250)
             Rectangle().fill(Design.line).frame(width: 1)
@@ -197,10 +197,19 @@ struct MainView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(spacing: 12) {
                         ApplicationIcon(url: app, size: 43)
-                        VStack(alignment: .leading, spacing: 4) { Text(appName(app)).font(.system(size: 16, weight: .semibold)); Text(L("当前默认打开 \(associated(app).count) 种列表中的文件", "Default for \(associated(app).count) listed file types")).font(.system(size: 11)).foregroundStyle(.secondary) }
+                        VStack(alignment: .leading, spacing: 4) { Text(appName(app)).font(.system(size: 16, weight: .semibold)); Text(L("当前是 \(associated(app).count) 种列表内格式的默认应用", "Default for \(associated(app).count) listed file types")).font(.system(size: 11)).foregroundStyle(.secondary)
+                            Text(appCatalog.apps.first(where: { $0.id == app })?.hasDocumentDeclarations == true ? L("应用声明了文件类型", "The app declares document types") : L("未声明文件类型，仍可能支持打开文件", "No document types declared; it may still open files")).font(.system(size: 10)).foregroundStyle(.secondary) }
+                        Spacer()
+                        Button(L("AI 推荐", "AI suggestions")) {
+                            assistantApp = appCatalog.apps.first(where: { $0.id == app }) ?? DiscoveredApplication(url: app)
+                            page = .assistant
+                        }
                     }.padding(18)
                     Divider()
-                    ScrollView { LazyVStack(spacing: 0) { ForEach(associated(app)) { item in AssociationRow(item: item, compact: true) { selectedType = item }.disabled(store.isApplying) } } }
+                    ScrollView { LazyVStack(spacing: 0) {
+                        if associated(app).isEmpty { Text(L("该应用当前不是列表中任何类型的默认应用；这不代表它不支持文件。", "This app is not the default for any listed types; it may still support files.")).font(.callout).foregroundStyle(.secondary).padding(24) }
+                        ForEach(associated(app)) { item in AssociationRow(item: item, compact: true) { selectedType = item }.disabled(store.isApplying) }
+                    } }
                 }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             } else {
                 emptyState(L("选择一个应用", "Choose an app"), detail: L("从左侧选择应用，查看它在当前列表中的关联。", "Select an app to view its associations in this list."), symbol: "square.stack.3d.up")

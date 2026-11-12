@@ -52,3 +52,12 @@ let deepseek = ProviderProfile.deepSeek()
 let deepseekModelsURL = try deepseek.config.endpoint("models")
 check(deepseekModelsURL.absoluteString == "https://api.deepseek.com/models", "DeepSeek model endpoint")
 print("Language and provider migration checks passed")
+do { try runDiscoveryChecks() } catch { fputs("FAIL: app discovery checks: \(error)\n", stderr); exit(1) }
+check(ChangeGuard.evaluate(expectedType: "type.docx", actualType: "type.docx", expectedCurrent: nil, actualCurrent: nil, target: "/Applications/Other.app", candidates: candidates, targetExists: true, allowUnregistered: true) == .allowed, "allow explicitly selected unregistered target")
+check(ChangeGuard.evaluate(expectedType: "type.docx", actualType: "type.docx", expectedCurrent: "old", actualCurrent: "changed", target: "/Applications/Other.app", candidates: candidates, targetExists: true, allowUnregistered: true) == .currentChanged, "unregistered override cannot bypass stale-state guard")
+let aliasProposals = [ChangeProposal(fileExtension: "htm", typeID: "public.html", target: "/App", current: "/Old"), ChangeProposal(fileExtension: "html", typeID: "public.html", target: "/App", current: "/Old"), ChangeProposal(fileExtension: "vue", typeID: "vue", target: "/App", current: nil)]
+let groupedAliases = try ChangeGrouping.group(aliasProposals)
+check(groupedAliases == [["htm", "html"], ["vue"]], "group aliases into one system write")
+do { _ = try ChangeGrouping.group([aliasProposals[0], ChangeProposal(fileExtension: "html", typeID: "public.html", target: "/Other", current: "/Old")]); fputs("FAIL: conflicting target accepted\n", stderr); exit(1) } catch ChangeGroupingError.conflictingTargets { }
+do { _ = try ChangeGrouping.group([aliasProposals[0], ChangeProposal(fileExtension: "html", typeID: "public.html", target: "/App", current: "/Changed")]); fputs("FAIL: inconsistent state accepted\n", stderr); exit(1) } catch ChangeGroupingError.inconsistentCurrent { }
+print("Association grouping checks passed")

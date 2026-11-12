@@ -83,5 +83,32 @@ func runAIChecks() async throws {
     do { _ = try await AIClient(config: local, key: "", transport: truncated).recommendations(for: context); throw AIError.invalidContext }
     catch AIError.invalidResponse { }
     catch { fputs("FAIL: incomplete response handling\n", stderr); exit(1) }
+    var requestCount = 0
+    var progressEvents: [Int] = []
+    let manyTypes = (0..<45).map { AIFileType(fileExtension: "type\($0)", current: nil, candidates: [AICandidate(id: "selected_app", name: "Editor", registered: $0 % 2 == 0)]) }
+    let batchContext = AIRequestContext(preference: "Recommend formats for Editor", types: manyTypes)
+    let batched = MockTransport { request in
+        requestCount += 1
+        let body = try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]
+        let messages = body["messages"] as! [[String: String]]
+        let sent = try JSONDecoder().decode(AIRequestContext.self, from: Data(messages[1]["content"]!.utf8))
+        assertCheck(sent.types.count <= 20, "each batch respects provider limit")
+        let suggestions = sent.types.map { AIRecommendation(fileExtension: $0.fileExtension, candidateID: "selected_app", reason: "Example") }
+        let text = String(data: try JSONEncoder().encode(AIResult(recommendations: suggestions, notes: [])), encoding: .utf8)!
+        return try response(request, object: ["choices":[["finish_reason":"stop", "message":["content":text]]]])
+    }
+    let batchedResult = try await AIClient(config: local, key: "", transport: batched).recommendationsBatched(for: batchContext) { current, _ in progressEvents.append(current) }
+    assertCheck(requestCount == 3 && progressEvents == [1, 2, 3], "batch count and progress")
+    assertCheck(batchedResult.recommendations.count == 45, "merge validated batch results")
+    var failingRequests = 0
+    let failingBatch = MockTransport { request in
+        failingRequests += 1
+        if failingRequests == 2 { return try response(request, status: 401, object: [:]) }
+        return try response(request, object: ["choices":[["finish_reason":"stop", "message":["content":"{\"recommendations\":[],\"notes\":[]}"]]]])
+    }
+    do { _ = try await AIClient(config: local, key: "", transport: failingBatch).recommendationsBatched(for: batchContext); throw AIError.invalidContext }
+    catch AIError.unauthorized { }
+    catch { fputs("FAIL: batch failure handling\n", stderr); exit(1) }
+    assertCheck(failingRequests == 2, "failed batch stops further calls")
     print("AI provider and validation checks passed")
 }

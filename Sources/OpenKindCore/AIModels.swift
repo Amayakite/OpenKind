@@ -34,7 +34,8 @@ public struct ProviderConfiguration: Codable, Equatable {
 public struct AICandidate: Codable, Equatable {
     public let id: String
     public let name: String
-    public init(id: String, name: String) { self.id = id; self.name = name }
+    public let registered: Bool
+    public init(id: String, name: String, registered: Bool = true) { self.id = id; self.name = name; self.registered = registered }
 }
 public struct AIFileType: Codable, Equatable {
     public let fileExtension: String
