@@ -1,0 +1,15 @@
+name: macOS
+on:
+  push:
+  pull_request:
+jobs:
+  build-and-test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test
+        run: swift run OpenKindChecks
+      - name: Build application
+        run: ./scripts/build-app.sh
+      - name: Verify app bundle
+        run: codesign --verify --deep --strict build/OpenKind.app
