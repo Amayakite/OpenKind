@@ -2,7 +2,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-VERSION="${OPENKIND_VERSION:-0.3.0}"
+VERSION="${OPENKIND_VERSION:-0.4.0}"
 BUILD_NUMBER="${OPENKIND_BUILD_NUMBER:-1}"
 UNIVERSAL="${OPENKIND_UNIVERSAL:-0}"
 if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ ! "$BUILD_NUMBER" =~ ^[0-9]+$ ]]; then

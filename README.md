@@ -4,13 +4,16 @@
 
 一个轻巧的 macOS 默认应用管理工具。按文件类型找到当前的打开方式，或按应用查看它负责的文件类型。
 
+OpenKind is a native macOS default-app manager with an optional AI assistant. It supports English and Simplified Chinese, follows the system language by default, and lets you choose a language in **Settings**. Configure multiple AI provider profiles, select the active one, and review suggestions before applying changes.
+
 ## 功能
 
 - 按文件扩展名、文件类型和应用名称搜索，并按文档、表格、图片等分类筛选。
 - 查看系统当前的默认应用，并从系统推荐的候选应用中选择；也可以手动选择其他应用。
 - 按应用查看它当前默认打开的格式，并从对应行修改。
 - 添加自定义扩展名；刷新以读取在访达或其他工具中作出的更改。
-- 选用 OpenAI 或兼容服务，获取模型列表并选择模型；AI 助理可在预览发送内容后生成配置建议，由用户勾选后应用。
+- 使用 OpenAI、DeepSeek 或自定义兼容服务，保存并切换多个配置，获取模型列表；AI 建议在预览后由用户勾选应用。
+- 支持跟随系统语言，或在“设置”中手动选择简体中文和 English。
 
 列表由内置常见扩展名和用户手动添加的扩展名组成，**不是系统全部文件类型的完整清单**。应用页同样只统计这份列表。实际可选应用和格式兼容性取决于 macOS 与应用自身声明；更改时系统可能要求确认。
 
@@ -37,12 +40,19 @@ open build/OpenKind.app
 
 ## 使用 AI 助理
 
-1. 打开侧栏的“AI 助理”，在“服务设置”中选择 OpenAI Responses 或 OpenAI 兼容 Chat Completions。
-2. 输入服务基础地址（通常以 `/v1` 结尾）和 API Key；可点击“获取模型”，从服务返回的列表中选择，也可以手动输入模型 ID。拉取列表不会发送文件关联信息；某些服务可能不支持列出模型。点击“保存”后，密钥按接口类型和地址保存在钥匙串，切换服务不会自动复用密钥。本机兼容代理可以不填密钥。
-3. 描述偏好并勾选最多 20 种文件类型。点击“预览发送内容”，检查目标服务、模型、描述和候选列表后再发送。你的描述会原样发送，请勿输入不想分享的信息。
-4. 勾选需要的建议并点击应用。应用前会重新核验系统类型、当前默认应用和目标候选；如已变化，需重新获取建议。同一种系统类型可能对应多个扩展名。应用结果逐项显示，可在本次会话中尝试恢复。
+1. 打开侧栏的“AI 助理”→“服务设置”，或“设置”→“管理 AI 服务”。左侧可选择 OpenAI、DeepSeek 预设，或通过“+”新增自定义配置。
+2. 在右侧 **API Key 下方的输入框**填写密钥，点击“获取模型”后选择模型，也可以手动输入模型 ID。点击“保存并启用”让当前配置生效；已启用的配置修改后点击“保存”。DeepSeek 预设地址为 `https://api.deepseek.com`。拉取列表不会发送文件关联信息；某些服务可能不支持列出模型。本机兼容代理可以不填密钥。
+3. 密钥存于钥匙串，并按配置、接口类型和服务地址隔离；更改地址后不会自动将旧地址的密钥发送到新地址。旧版配置和密钥会按旧地址迁移使用，macOS 可能要求确认钥匙串访问。
+4. 描述偏好并勾选最多 20 种文件类型。点击“预览发送内容”，检查目标服务、模型、描述和候选列表后再发送。你的描述会原样发送，请勿输入不想分享的信息。
+5. 勾选需要的建议并点击应用。应用前会重新核验系统类型、当前默认应用和目标候选；如已变化，需重新获取建议。同一种系统类型可能对应多个扩展名。应用结果逐项显示，可在本次会话中尝试恢复。
 
 OpenAI 模式使用 Responses 的结构化输出；兼容模式使用 Chat Completions 并校验 JSON。模型列表中的项目不一定都支持文字生成或结构化输出；遇到不兼容模型时请更换模型或服务。远程服务要求 HTTPS，本机 loopback 代理允许 HTTP；不会自动跟随重定向。建议仅在信任目标服务后输入密钥并发送数据。
+
+### Language / 语言
+
+Open **Settings → Display language** to choose Follow system, 简体中文 or English. Changes apply immediately. macOS-provided application names and file-type descriptions may follow the operating system language.
+
+在侧栏“设置 → 显示语言”选择跟随系统、简体中文或 English，界面立即切换。系统提供的应用名称和文件类型描述可能仍使用操作系统语言。
 
 ## 工作原理与隐私
 

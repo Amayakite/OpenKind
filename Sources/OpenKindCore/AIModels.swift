@@ -3,6 +3,7 @@ import Foundation
 public enum APIMode: String, Codable, CaseIterable {
     case openAI = "OpenAI Responses"
     case compatible = "OpenAI 兼容 Chat Completions"
+    public var label: String { self == .openAI ? "OpenAI Responses" : L("OpenAI 兼容 Chat Completions", "OpenAI-compatible Chat Completions") }
 }
 
 public struct ProviderConfiguration: Codable, Equatable {
@@ -78,18 +79,18 @@ public enum AIError: LocalizedError {
     case invalidEndpoint, missingModel, invalidContext, invalidResult, invalidResponse, tooLarge, rejected, cancelled, network, unauthorized, rateLimited, service(Int)
     public var errorDescription: String? {
         switch self {
-        case .invalidEndpoint: return "服务地址无效。远程服务需要 HTTPS；HTTP 仅支持本机 localhost 或 127.0.0.1。"
-        case .missingModel: return "请先选择或输入模型 ID。"
-        case .invalidContext: return "请选择 1 至 20 个文件类型，并输入不超过 2000 字的需求。"
-        case .invalidResult: return "模型返回了无效建议：包含未知类型、未知应用、重复项目或过长内容。请重试。"
-        case .invalidResponse: return "服务返回的格式不受支持，或结果不完整。请检查模型和接口兼容性。"
-        case .tooLarge: return "服务返回的数据过大。"
-        case .rejected: return "模型拒绝了请求或没有返回建议内容。"
-        case .cancelled: return "请求已取消。"
-        case .network: return "无法连接服务。请检查地址、网络或证书。"
-        case .unauthorized: return "服务拒绝了认证，请检查 API Key 和服务地址。"
-        case .rateLimited: return "请求受到服务端限流，请稍后再试。"
-        case .service(let code): return "服务返回 HTTP \(code)。请检查模型、接口兼容性或服务状态。"
+        case .invalidEndpoint: return L("服务地址无效。远程服务需要 HTTPS；HTTP 仅支持本机 localhost 或 127.0.0.1。", "Invalid URL. Remote providers require HTTPS; HTTP is limited to localhost.")
+        case .missingModel: return L("请先选择或输入模型 ID。", "Choose or enter a model ID first.")
+        case .invalidContext: return L("请选择 1 至 20 个文件类型，并输入不超过 2000 字的需求。", "Select 1–20 file types and enter a request of at most 2,000 characters.")
+        case .invalidResult: return L("模型返回了无效建议：包含未知类型、未知应用、重复项目或过长内容。请重试。", "The model returned invalid suggestions, such as unknown types, apps, duplicates or overly long text.")
+        case .invalidResponse: return L("服务返回的格式不受支持，或结果不完整。请检查模型和接口兼容性。", "The response format is unsupported or incomplete. Check the model and API compatibility.")
+        case .tooLarge: return L("服务返回的数据过大。", "The response is too large.")
+        case .rejected: return L("模型拒绝了请求或没有返回建议内容。", "The model refused the request or returned no suggestions.")
+        case .cancelled: return L("请求已取消。", "Request cancelled.")
+        case .network: return L("无法连接服务。请检查地址、网络或证书。", "Could not connect. Check the URL, network and certificate.")
+        case .unauthorized: return L("服务拒绝了认证，请检查 API Key 和服务地址。", "Authentication failed. Check the API key and service URL.")
+        case .rateLimited: return L("请求受到服务端限流，请稍后再试。", "The provider rate-limited the request. Try again later.")
+        case .service(let code): return L("服务返回 HTTP \(code)。请检查模型、接口兼容性或服务状态。", "The provider returned HTTP \(code). Check model, API compatibility and service status.")
         }
     }
 }

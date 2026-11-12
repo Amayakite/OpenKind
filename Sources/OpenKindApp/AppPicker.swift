@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
+import OpenKindCore
 
 struct AppPicker: View {
     let item: FileAssociation
@@ -13,11 +14,11 @@ struct AppPicker: View {
             HStack(alignment: .top, spacing: 13) {
                 ZStack { RoundedRectangle(cornerRadius: 11).fill(Color.accentColor.opacity(0.1)); Image(systemName: "doc.text").font(.system(size: 19)).foregroundStyle(.tint) }.frame(width: 44, height: 44)
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("选择默认应用").font(.system(size: 20, weight: .bold))
-                    Text("选择打开 .\(item.ext) 文件的应用").font(.system(size: 12)).foregroundStyle(.secondary)
+                    Text(L("选择默认应用", "Choose a default app")).font(.system(size: 20, weight: .bold))
+                    Text(L("选择打开 .\(item.ext) 文件的应用", "Choose an app for .\(item.ext) files")).font(.system(size: 12)).foregroundStyle(.secondary)
                 }
             }.padding(.bottom, 23)
-            Text("推荐应用").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary).padding(.bottom, 9)
+            Text(L("推荐应用", "Suggested apps")).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary).padding(.bottom, 9)
             ScrollView {
                 VStack(spacing: 0) {
                     ForEach(candidates, id: \.self) { app in
@@ -30,21 +31,21 @@ struct AppPicker: View {
                                 }
                                 Spacer()
                                 if item.appURL?.standardizedFileURL == app.standardizedFileURL {
-                                    Text("当前默认").font(.system(size: 10, weight: .medium)).foregroundStyle(.blue).padding(.horizontal, 8).padding(.vertical, 4).background(Color.blue.opacity(0.09), in: Capsule())
+                                    Text(L("当前默认", "Current default")).font(.system(size: 10, weight: .medium)).foregroundStyle(.blue).padding(.horizontal, 8).padding(.vertical, 4).background(Color.blue.opacity(0.09), in: Capsule())
                                 } else { Image(systemName: "chevron.right").font(.system(size: 10)).foregroundStyle(.tertiary) }
                             }.padding(11).contentShape(Rectangle())
                         }.buttonStyle(.plain)
                         Divider().padding(.leading, 59)
                     }
-                    if candidates.isEmpty { Text("系统未找到声明支持此格式的应用。你可以手动选择。 ").font(.callout).foregroundStyle(.secondary).padding(20) }
+                    if candidates.isEmpty { Text(L("系统未找到声明支持此格式的应用。你可以手动选择。 ", "No apps registered for this format. You can choose one manually.")).font(.callout).foregroundStyle(.secondary).padding(20) }
                 }
             }.frame(minHeight: 90, maxHeight: 270)
                 .background(Color.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.primary.opacity(0.07)))
             HStack {
-                Button("选择其他应用…") { chooseOther() }
+                Button(L("选择其他应用…", "Choose another app…")) { chooseOther() }
                 Spacer()
-                Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(L("取消", "Cancel")) { dismiss() }.keyboardShortcut(.cancelAction)
             }.padding(.top, 19)
         }.padding(25).frame(width: 520)
     }

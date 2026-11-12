@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 import OpenKindCore
 
-private enum Page { case types, apps, assistant }
+private enum Page { case types, apps, assistant, settings }
 private enum Design {
     static let blue = Color(red: 0.22, green: 0.39, blue: 0.92)
     static let canvas = Color(nsColor: .windowBackgroundColor)
@@ -12,6 +12,7 @@ private enum Design {
 struct MainView: View {
     @StateObject private var store = AssociationStore()
     @StateObject private var aiSettings = AISettingsStore()
+    @AppStorage(AppLanguage.preferenceKey) private var language = AppLanguage.system.rawValue
     @State private var page: Page = .types
     @State private var category: FileCategory?
     @State private var query = ""
@@ -44,7 +45,9 @@ struct MainView: View {
             sidebar
             Rectangle().fill(Design.line).frame(width: 1)
             VStack(alignment: .leading, spacing: 0) {
-                if page == .assistant {
+                if page == .settings {
+                    GeneralSettingsView(settings: aiSettings)
+                } else if page == .assistant {
                     AssistantView(store: store, settings: aiSettings)
                 } else {
                     header
@@ -54,11 +57,12 @@ struct MainView: View {
             }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Design.canvas)
         }
         .frame(minWidth: 940, minHeight: 620)
+        .environment(\.locale, language == "system" ? .autoupdatingCurrent : Locale(identifier: language))
         .onAppear { store.reload() }
         .sheet(item: $selectedType) { item in AppPicker(item: item, store: store) }
         .sheet(isPresented: $showAdd) { addSheet }
-        .alert("无法完成操作", isPresented: Binding(get: { store.errorMessage != nil }, set: { if !$0 { store.errorMessage = nil } })) {
-            Button("好") { store.errorMessage = nil }
+        .alert(L("无法完成操作", "Could not complete the action"), isPresented: Binding(get: { store.errorMessage != nil }, set: { if !$0 { store.errorMessage = nil } })) {
+            Button(L("好", "OK")) { store.errorMessage = nil }
         } message: { Text(store.errorMessage ?? "") }
     }
 
@@ -68,19 +72,20 @@ struct MainView: View {
                 BrandMark(size: 36)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("OpenKind").font(.system(size: 16, weight: .bold, design: .rounded))
-                    Text("默认应用管理").font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text(L("默认应用管理", "Default app manager")).font(.system(size: 11)).foregroundStyle(.secondary)
                 }
             }.padding(.horizontal, 20).padding(.top, 35).padding(.bottom, 35)
-            Text("管理方式").font(.system(size: 11, weight: .semibold)).foregroundStyle(.tertiary).padding(.horizontal, 23).padding(.bottom, 9)
-            sidebarButton("文件类型", subtitle: "按扩展名管理", symbol: "doc.on.doc", selected: page == .types) { page = .types; query = "" }
-            sidebarButton("应用", subtitle: "查看应用关联", symbol: "square.stack.3d.up", selected: page == .apps) { page = .apps; query = ""; category = nil }
-            sidebarButton("AI 助理", subtitle: "获取配置建议", symbol: "sparkles", selected: page == .assistant) { page = .assistant; query = ""; category = nil }
+            Text(L("管理方式", "Manage")).font(.system(size: 11, weight: .semibold)).foregroundStyle(.tertiary).padding(.horizontal, 23).padding(.bottom, 9)
+            sidebarButton(L("文件类型", "File types"), subtitle: L("按扩展名管理", "Manage by extension"), symbol: "doc.on.doc", selected: page == .types) { page = .types; query = "" }
+            sidebarButton(L("应用", "Apps"), subtitle: L("查看应用关联", "View app associations"), symbol: "square.stack.3d.up", selected: page == .apps) { page = .apps; query = ""; category = nil }
+            sidebarButton(L("AI 助理", "AI assistant"), subtitle: L("获取配置建议", "Get recommendations"), symbol: "sparkles", selected: page == .assistant) { page = .assistant; query = ""; category = nil }
             Spacer()
+            sidebarButton(L("设置", "Settings"), subtitle: L("语言与服务", "Language and providers"), symbol: "gearshape", selected: page == .settings) { page = .settings }
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "person.crop.circle").font(.system(size: 16)).foregroundStyle(Design.blue)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("当前用户").font(.system(size: 12, weight: .semibold))
-                    Text("设置保存在这台 Mac 上").font(.system(size: 10)).foregroundStyle(.secondary)
+                    Text(L("当前用户", "Current user")).font(.system(size: 12, weight: .semibold))
+                    Text(L("设置保存在这台 Mac 上", "Settings stay on this Mac")).font(.system(size: 10)).foregroundStyle(.secondary)
                 }
             }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 10))
@@ -102,23 +107,23 @@ struct MainView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 7) {
-                    Text(page == .types ? "文件类型" : "应用关联").font(.system(size: 28, weight: .bold))
-                    Text(page == .types ? "为每种文件选择顺手的打开方式。" : "查看应用当前默认打开的文件类型。")
+                    Text(page == .types ? L("文件类型", "File types") : L("应用关联", "App associations")).font(.system(size: 28, weight: .bold))
+                    Text(page == .types ? L("为每种文件选择顺手的打开方式。", "Choose how each file type opens.") : L("查看应用当前默认打开的文件类型。", "See the file types each app opens by default."))
                         .font(.system(size: 13)).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button { store.reload(); store.notice = "已读取最新设置" } label: { Image(systemName: "arrow.clockwise").frame(width: 30, height: 28) }
-                    .help("刷新默认应用")
+                Button { store.reload(); store.notice = L("已读取最新设置", "Settings refreshed") } label: { Image(systemName: "arrow.clockwise").frame(width: 30, height: 28) }
+                    .help(L("刷新默认应用", "Refresh defaults"))
                 if page == .types {
-                    Button { newExtension = ""; addError = nil; showAdd = true } label: { Label("添加类型", systemImage: "plus").padding(.vertical, 2) }
+                    Button { newExtension = ""; addError = nil; showAdd = true } label: { Label(L("添加类型", "Add type"), systemImage: "plus").padding(.vertical, 2) }
                         .buttonStyle(.borderedProminent).tint(Design.blue)
                 }
             }.padding(.top, 38).padding(.bottom, 23)
             HStack(spacing: 9) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField(page == .types ? "搜索文件扩展名或应用，如 .docx" : "搜索应用名称", text: $query).textFieldStyle(.plain)
+                TextField(page == .types ? L("搜索文件扩展名或应用，如 .docx", "Search extensions or apps, e.g. .docx") : L("搜索应用名称", "Search apps"), text: $query).textFieldStyle(.plain)
                 if !query.isEmpty { Button { query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary) }.buttonStyle(.plain) }
-                Text("搜索").font(.system(size: 10)).foregroundStyle(.tertiary).padding(.horizontal, 6).padding(.vertical, 3)
+                Text(L("搜索", "Search")).font(.system(size: 10)).foregroundStyle(.tertiary).padding(.horizontal, 6).padding(.vertical, 3)
                     .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 4))
             }.padding(.horizontal, 12).frame(height: 38)
                 .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 9))
@@ -134,16 +139,16 @@ struct MainView: View {
                 }
             }.padding(.top, 17).padding(.bottom, 18)
             HStack {
-                Text(category?.rawValue ?? "所有文件类型").font(.system(size: 14, weight: .semibold))
+                Text(category?.localizedName ?? L("所有文件类型", "All file types")).font(.system(size: 14, weight: .semibold))
                 Text("\(filtered.count)").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
                     .padding(.horizontal, 7).padding(.vertical, 3).background(Color.primary.opacity(0.05), in: Capsule())
                 Spacer()
-                Text("选择一项来更改").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text(L("选择一项来更改", "Select an item to change")).font(.system(size: 11)).foregroundStyle(.secondary)
             }.padding(.bottom, 11)
             VStack(spacing: 0) {
                 HStack {
-                    Text("文件类型").frame(maxWidth: .infinity, alignment: .leading)
-                    Text("默认应用").frame(width: 230, alignment: .leading)
+                    Text(L("文件类型", "File types")).frame(maxWidth: .infinity, alignment: .leading)
+                    Text(L("默认应用", "Default app")).frame(width: 230, alignment: .leading)
                     Text("").frame(width: 16)
                 }.font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary).padding(.horizontal, 18).frame(height: 35)
                     .background(Color.primary.opacity(0.025))
@@ -151,7 +156,7 @@ struct MainView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(filtered) { item in AssociationRow(item: item) { selectedType = item }.disabled(store.isApplying) }
-                        if filtered.isEmpty { emptyState("没有找到文件类型", detail: "换个关键词，或添加自定义扩展名。", symbol: "doc.text.magnifyingglass") }
+                        if filtered.isEmpty { emptyState(L("没有找到文件类型", "No file types found"), detail: L("换个关键词，或添加自定义扩展名。", "Try another search or add a custom extension."), symbol: "doc.text.magnifyingglass") }
                     }
                 }
             }.background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
@@ -161,7 +166,7 @@ struct MainView: View {
     private func categoryChip(_ item: FileCategory?) -> some View {
         let active = category == item
         return Button { category = item } label: {
-            Text(item?.rawValue ?? "全部").font(.system(size: 11, weight: active ? .semibold : .medium))
+            Text(item?.localizedName ?? L("全部", "All")).font(.system(size: 11, weight: active ? .semibold : .medium))
                 .foregroundStyle(active ? Design.blue : Color.secondary)
                 .padding(.horizontal, 12).padding(.vertical, 6)
                 .background(active ? Design.blue.opacity(0.11) : Color.primary.opacity(0.04), in: Capsule())
@@ -177,14 +182,14 @@ struct MainView: View {
                                 ApplicationIcon(url: app, size: 34)
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(appName(app)).font(.system(size: 12, weight: .semibold)).lineLimit(1)
-                                    Text("\(associated(app).count) 种文件类型").font(.system(size: 10)).foregroundStyle(.secondary)
+                                    Text(L("\(associated(app).count) 种文件类型", "\(associated(app).count) file types")).font(.system(size: 10)).foregroundStyle(.secondary)
                                 }
                                 Spacer(minLength: 0)
                                 Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold)).foregroundStyle(.tertiary)
                             }.padding(9).contentShape(Rectangle()).background(selectedApp == app ? Design.blue.opacity(0.09) : .clear, in: RoundedRectangle(cornerRadius: 9))
                         }.buttonStyle(.plain)
                     }
-                    if filteredApps.isEmpty { Text("没有找到应用").font(.caption).foregroundStyle(.secondary).padding(22) }
+                    if filteredApps.isEmpty { Text(L("没有找到应用", "No apps found")).font(.caption).foregroundStyle(.secondary).padding(22) }
                 }.padding(9)
             }.frame(width: 250)
             Rectangle().fill(Design.line).frame(width: 1)
@@ -192,13 +197,13 @@ struct MainView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(spacing: 12) {
                         ApplicationIcon(url: app, size: 43)
-                        VStack(alignment: .leading, spacing: 4) { Text(appName(app)).font(.system(size: 16, weight: .semibold)); Text("当前默认打开 \(associated(app).count) 种列表中的文件").font(.system(size: 11)).foregroundStyle(.secondary) }
+                        VStack(alignment: .leading, spacing: 4) { Text(appName(app)).font(.system(size: 16, weight: .semibold)); Text(L("当前默认打开 \(associated(app).count) 种列表中的文件", "Default for \(associated(app).count) listed file types")).font(.system(size: 11)).foregroundStyle(.secondary) }
                     }.padding(18)
                     Divider()
                     ScrollView { LazyVStack(spacing: 0) { ForEach(associated(app)) { item in AssociationRow(item: item, compact: true) { selectedType = item }.disabled(store.isApplying) } } }
                 }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             } else {
-                emptyState("选择一个应用", detail: "从左侧选择应用，查看它在当前列表中的关联。", symbol: "square.stack.3d.up")
+                emptyState(L("选择一个应用", "Choose an app"), detail: L("从左侧选择应用，查看它在当前列表中的关联。", "Select an app to view its associations in this list."), symbol: "square.stack.3d.up")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }.background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
@@ -208,20 +213,20 @@ struct MainView: View {
     private var footer: some View {
         HStack(spacing: 6) {
             Image(systemName: store.notice == nil ? "info.circle" : "checkmark.circle.fill").foregroundStyle(store.notice == nil ? Color.secondary : Color.green)
-            Text(store.notice ?? "列表包含常见格式及你添加的类型，不代表全部系统格式。")
+            Text(store.notice ?? L("列表包含常见格式及你添加的类型，不代表全部系统格式。", "This list includes common and custom types, not every system type."))
             Spacer()
-            if store.isApplying { ProgressView().controlSize(.small); Text("正在更新…") }
+            if store.isApplying { ProgressView().controlSize(.small); Text(L("正在更新…", "Updating…")) }
         }.font(.system(size: 10)).foregroundStyle(.secondary).padding(.horizontal, 33).padding(.bottom, 18)
     }
     private var addSheet: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("添加文件类型").font(.system(size: 20, weight: .bold))
-            Text("输入扩展名，OpenKind 会在列表中显示它的默认应用。") .font(.system(size: 13)).foregroundStyle(.secondary)
-            TextField("例如 docx", text: $newExtension).textFieldStyle(.roundedBorder)
+            Text(L("添加文件类型", "Add file type")).font(.system(size: 20, weight: .bold))
+            Text(L("输入扩展名，OpenKind 会在列表中显示它的默认应用。", "Enter an extension to see its default app in OpenKind.")) .font(.system(size: 13)).foregroundStyle(.secondary)
+            TextField(L("例如 docx", "e.g. docx"), text: $newExtension).textFieldStyle(.roundedBorder)
             if let addError { Text(addError).font(.caption).foregroundStyle(.red) }
-            HStack { Spacer(); Button("取消") { showAdd = false }.keyboardShortcut(.cancelAction)
-                Button("添加") {
-                    guard FileCatalog.normalize(newExtension) != nil else { addError = "请输入有效扩展名，例如 docx 或 7z。"; return }
+            HStack { Spacer(); Button(L("取消", "Cancel")) { showAdd = false }.keyboardShortcut(.cancelAction)
+                Button(L("添加", "Add")) {
+                    guard FileCatalog.normalize(newExtension) != nil else { addError = L("请输入有效扩展名，例如 docx 或 7z。", "Enter a valid extension, such as docx or 7z."); return }
                     if let value = store.add(newExtension) { page = .types; category = nil; query = value; showAdd = false }
                 }.keyboardShortcut(.defaultAction)
             }

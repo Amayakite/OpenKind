@@ -5,6 +5,20 @@ public enum FileCategory: String, CaseIterable, Identifiable {
     case images = "图片", media = "音视频", archives = "压缩与磁盘"
     case frontend = "前端开发", development = "编程开发", configuration = "配置与数据", other = "其他"
     public var id: String { rawValue }
+    public var localizedName: String {
+        switch self {
+        case .documents: return L(rawValue, "Documents")
+        case .spreadsheets: return L(rawValue, "Spreadsheets")
+        case .presentations: return L(rawValue, "Presentations")
+        case .images: return L(rawValue, "Images")
+        case .media: return L(rawValue, "Audio & Video")
+        case .archives: return L(rawValue, "Archives & Disks")
+        case .frontend: return L(rawValue, "Frontend")
+        case .development: return L(rawValue, "Development")
+        case .configuration: return L(rawValue, "Config & Data")
+        case .other: return L(rawValue, "Other")
+        }
+    }
     public var symbol: String {
         switch self {
         case .documents: return "doc.text"

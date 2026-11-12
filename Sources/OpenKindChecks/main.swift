@@ -29,3 +29,26 @@ check(ChangeGuard.evaluate(expectedType: "type.docx", actualType: "type.other", 
 check(ChangeGuard.evaluate(expectedType: "type.docx", actualType: "type.docx", expectedCurrent: nil, actualCurrent: nil, target: "/Applications/Missing.app", candidates: candidates, targetExists: false) == .missingApplication, "reject missing app")
 check(ChangeGuard.evaluate(expectedType: "type.docx", actualType: "type.docx", expectedCurrent: nil, actualCurrent: nil, target: "/Applications/Other.app", candidates: candidates, targetExists: true) == .unsupportedApplication, "reject unsupported app")
 print("Association preflight checks passed")
+check(AppLanguage.usesChinese(.system, preferredLanguages: ["zh-Hans-CN"]), "follow Chinese system language")
+check(!AppLanguage.usesChinese(.system, preferredLanguages: ["en-US"]), "follow English system language")
+check(AppLanguage.usesChinese(.simplifiedChinese, preferredLanguages: ["en"]), "explicit Chinese overrides system")
+check(!AppLanguage.usesChinese(.english, preferredLanguages: ["zh"]), "explicit English overrides system")
+let oldConfig = ProviderConfiguration(mode: .compatible, baseURL: "https://legacy.example/v1", model: "old-model")
+let migrated = ProviderRegistry.initial(legacy: [oldConfig], activeMode: .compatible)
+check(migrated.profiles.count == 3, "migrate legacy profile and add presets")
+let legacyProfile = migrated.profiles.first { $0.config == oldConfig }!
+check(migrated.activeID == legacyProfile.id, "preserve active migrated profile")
+let oldAccount = try legacyProfile.credentialAccount()
+let legacyEndpoint = try oldConfig.endpoint("").absoluteString
+check(oldAccount == "\(oldConfig.mode.rawValue)|\(legacyEndpoint)", "preserve legacy credential account")
+var changedProfile = legacyProfile
+changedProfile.config.baseURL = "https://other.example/v1"
+let changedAccount = try changedProfile.credentialAccount()
+check(changedAccount != oldAccount, "do not reuse key after endpoint change")
+let anotherProfile = ProviderProfile(name: "Other", config: oldConfig)
+let anotherAccount = try anotherProfile.credentialAccount()
+check(anotherAccount != oldAccount, "isolate keys between profiles")
+let deepseek = ProviderProfile.deepSeek()
+let deepseekModelsURL = try deepseek.config.endpoint("models")
+check(deepseekModelsURL.absoluteString == "https://api.deepseek.com/models", "DeepSeek model endpoint")
+print("Language and provider migration checks passed")
