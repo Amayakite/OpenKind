@@ -38,6 +38,22 @@ private enum KeychainVault {
         let status = SecItemDelete(try query(profile) as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else { throw SettingsError.keychain(status) }
     }
+    static func removeAll(for profile: ProviderProfile) throws {
+        let lookup: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
+                                     kSecReturnAttributes as String: true, kSecMatchLimit as String: kSecMatchLimitAll]
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(lookup as CFDictionary, &result)
+        if status == errSecItemNotFound { return }
+        guard status == errSecSuccess, let items = result as? [[String: Any]] else { throw SettingsError.keychain(status) }
+        let prefix = "profile:\(profile.id.uuidString)|"
+        for item in items {
+            guard let account = item[kSecAttrAccount as String] as? String,
+                  account.hasPrefix(prefix) || account == profile.legacyCredentialAccount else { continue }
+            let entry: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
+            let deletion = SecItemDelete(entry as CFDictionary)
+            guard deletion == errSecSuccess || deletion == errSecItemNotFound else { throw SettingsError.keychain(deletion) }
+        }
+    }
 }
 private enum SettingsError: LocalizedError {
     case keychain(OSStatus), invalidName, unsaved, noProfile
@@ -123,9 +139,9 @@ private enum SettingsError: LocalizedError {
     func removeProfile() {
         guard registry.profiles.count > 1 else { error = L("至少保留一个配置。", "Keep at least one profile."); return }
         do {
-            // Delete the credential belonging to the saved endpoint, never an unrelated draft endpoint.
+            // Remove only accounts belonging to this profile, including earlier endpoints.
             guard let saved = registry.profiles.first(where: { $0.id == draft.id }) else { throw SettingsError.noProfile }
-            try KeychainVault.remove(saved)
+            try KeychainVault.removeAll(for: saved)
             registry.profiles.removeAll { $0.id == saved.id }
             if registry.activeID == saved.id { registry.activeID = registry.profiles.first?.id }
             persist(); draft = registry.profiles.first!; keyInput = ""; models = []; status = nil; refreshKeyStatus()
@@ -253,7 +269,7 @@ struct AISettingsView: View {
             Button(L("删除密钥", "Delete key"), role: .destructive) { settings.deleteKey() }
             Button(L("取消", "Cancel"), role: .cancel) {}
         }
-        .confirmationDialog(L("删除此配置和保存地址对应的密钥？", "Delete this profile and the key for its saved address?"), isPresented: $confirmDelete) {
+        .confirmationDialog(L("删除此配置及其所有地址对应的密钥？", "Delete this profile and its keys for all addresses?"), isPresented: $confirmDelete) {
             Button(L("删除配置", "Delete profile"), role: .destructive) { settings.removeProfile() }
             Button(L("取消", "Cancel"), role: .cancel) {}
         }
