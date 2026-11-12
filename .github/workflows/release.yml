@@ -52,10 +52,7 @@ jobs:
           set -euo pipefail
           codesign --verify --deep --strict --verbose=1 build/OpenKind.app
           lipo build/OpenKind.app/Contents/MacOS/OpenKind -verify_arch arm64 x86_64
-          mkdir -p dist
-          ARCHIVE="OpenKind-${RELEASE_TAG}-macOS-universal.zip"
-          ditto -c -k --sequesterRsrc --keepParent build/OpenKind.app "dist/$ARCHIVE"
-          (cd dist && shasum -a 256 "$ARCHIVE" > SHA256SUMS.txt && shasum -a 256 -c SHA256SUMS.txt)
+          ./scripts/package-release.sh "$RELEASE_TAG"
       - name: Upload packaged application
         uses: actions/upload-artifact@v4
         with:
@@ -85,6 +82,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          args=("$RELEASE_TAG" dist/*.zip dist/SHA256SUMS.txt --verify-tag --title "OpenKind $RELEASE_TAG" --generate-notes --notes "Universal macOS 14+ build (Apple Silicon and Intel). This build is ad-hoc signed and is not notarized by Apple.")
+          args=("$RELEASE_TAG" dist/*.dmg dist/*.zip dist/SHA256SUMS.txt --verify-tag --title "OpenKind $RELEASE_TAG" --generate-notes --notes "Universal macOS 14+ build (Apple Silicon and Intel). Open the DMG and drag OpenKind into Applications, or use the ZIP. This build is ad-hoc signed and is not notarized by Apple.")
           if [[ "$PRERELEASE" == true ]]; then args+=(--prerelease --latest=false); fi
           gh release create "${args[@]}"

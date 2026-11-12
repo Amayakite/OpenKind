@@ -4,7 +4,7 @@
 
 一个轻巧的 macOS 默认应用管理工具。按文件类型找到当前的打开方式，或按应用查看它负责的文件类型。
 
-OpenKind is a native macOS default-app manager with an optional AI assistant. It supports English and Simplified Chinese, follows the system language by default, and lets you choose a language in **Settings**. Configure multiple AI provider profiles, select the active one, and review suggestions before applying changes.
+OpenKind is a native macOS default-app manager with an optional AI assistant. It supports English and Simplified Chinese, follows the system language by default, and lets you choose a language in **Settings**. Configure multiple AI provider profiles, select the active one, and review suggestions before applying changes. Download the DMG from Releases and drag OpenKind into Applications.
 
 ## 功能
 
@@ -19,7 +19,7 @@ OpenKind is a native macOS default-app manager with an optional AI assistant. It
 
 ## 下载
 
-从 [GitHub Releases](https://github.com/Amayakite/OpenKind/releases) 下载 macOS 通用版本。发布包支持 Apple Silicon 和 Intel，要求 macOS 14 或更高版本。应用尚未经过 Apple 公证，首次打开可能需要系统确认。
+从 [GitHub Releases](https://github.com/Amayakite/OpenKind/releases) 下载 macOS 通用版本。打开 DMG 后将 OpenKind 拖入“应用程序”；也提供备用 ZIP。发布包支持 Apple Silicon 和 Intel，要求 macOS 14 或更高版本。应用尚未经过 Apple 公证，首次打开可能需要系统确认。
 
 ## 运行与构建
 
