@@ -98,8 +98,16 @@ public struct AIClient {
             if message["refusal"] as? String != nil { throw AIError.rejected }
             text = message["content"] as? String
         }
-        guard let text, !text.isEmpty, let resultData = text.data(using: .utf8) else { throw AIError.rejected }
-        guard let parsed = try? JSONDecoder().decode(AIResult.self, from: resultData) else { throw AIError.invalidResponse }
+        guard let text, !text.isEmpty else { throw AIError.rejected }
+        // Some compatible providers wrap an otherwise valid JSON object in a Markdown fence.
+        var jsonText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if jsonText.hasPrefix("```") && jsonText.hasSuffix("```"), let newline = jsonText.firstIndex(of: "\n") {
+            let header = jsonText[..<newline].trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if header == "```" || header == "```json" {
+                jsonText = String(jsonText[jsonText.index(after: newline)..<jsonText.index(jsonText.endIndex, offsetBy: -3)]).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        guard let resultData = jsonText.data(using: .utf8), let parsed = try? JSONDecoder().decode(AIResult.self, from: resultData) else { throw AIError.invalidResponse }
         return try parsed.validated(for: context)
     }
 }

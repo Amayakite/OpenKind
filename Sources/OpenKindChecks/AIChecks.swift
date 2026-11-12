@@ -49,6 +49,11 @@ func runAIChecks() async throws {
     }
     let compatibleResult = try await AIClient(config: local, key: "", transport: compatible).recommendations(for: context)
     assertCheck(compatibleResult == valid, "parse compatible result")
+    let fenced = MockTransport { request in
+        try response(request, object: ["choices":[["finish_reason":"stop", "message":["content":"```json\n\(output)\n```"]]]])
+    }
+    let fencedResult = try await AIClient(config: local, key: "", transport: fenced).recommendations(for: context)
+    assertCheck(fencedResult == valid, "parse fenced JSON from compatible providers")
     let models = MockTransport { request in
         assertCheck(request.httpMethod == "GET" && request.url!.path == "/v1/models", "list models request")
         assertCheck(request.httpBody == nil, "model listing includes no file context")
