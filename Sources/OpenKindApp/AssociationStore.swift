@@ -10,7 +10,7 @@ struct FileAssociation: Identifiable {
     var id: String { ext }
     var category: FileCategory { FileCatalog.category(for: ext) }
     var appName: String { appURL.map { FileManager.default.displayName(atPath: $0.path).replacingOccurrences(of: ".app", with: "") } ?? "未设置" }
-    var detail: String { type?.localizedDescription ?? "未识别的文件类型" }
+    var detail: String { type == nil ? "系统未识别此类型" : (type?.localizedDescription ?? "\(ext.uppercased()) 文件") }
 }
 
 @MainActor final class AssociationStore: ObservableObject {

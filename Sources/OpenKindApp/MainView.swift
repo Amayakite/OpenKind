@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 import OpenKindCore
 
-private enum Page { case types, apps }
+private enum Page { case types, apps, assistant }
 private enum Design {
     static let blue = Color(red: 0.22, green: 0.39, blue: 0.92)
     static let canvas = Color(nsColor: .windowBackgroundColor)
@@ -11,6 +11,7 @@ private enum Design {
 
 struct MainView: View {
     @StateObject private var store = AssociationStore()
+    @StateObject private var aiSettings = AISettingsStore()
     @State private var page: Page = .types
     @State private var category: FileCategory?
     @State private var query = ""
@@ -43,9 +44,13 @@ struct MainView: View {
             sidebar
             Rectangle().fill(Design.line).frame(width: 1)
             VStack(alignment: .leading, spacing: 0) {
-                header
-                if page == .types { typeContent } else { appContent }
-                footer
+                if page == .assistant {
+                    AssistantView(store: store, settings: aiSettings)
+                } else {
+                    header
+                    if page == .types { typeContent } else { appContent }
+                    footer
+                }
             }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Design.canvas)
         }
         .frame(minWidth: 940, minHeight: 620)
@@ -69,6 +74,7 @@ struct MainView: View {
             Text("管理方式").font(.system(size: 11, weight: .semibold)).foregroundStyle(.tertiary).padding(.horizontal, 23).padding(.bottom, 9)
             sidebarButton("文件类型", subtitle: "按扩展名管理", symbol: "doc.on.doc", selected: page == .types) { page = .types; query = "" }
             sidebarButton("应用", subtitle: "查看应用关联", symbol: "square.stack.3d.up", selected: page == .apps) { page = .apps; query = ""; category = nil }
+            sidebarButton("AI 助理", subtitle: "获取配置建议", symbol: "sparkles", selected: page == .assistant) { page = .assistant; query = ""; category = nil }
             Spacer()
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "person.crop.circle").font(.system(size: 16)).foregroundStyle(Design.blue)
