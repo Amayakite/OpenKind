@@ -75,6 +75,7 @@ private enum SettingsError: LocalizedError {
     @Published var isLoading = false
     @Published var status: String?
     @Published var error: String?
+    @Published var diagnostic: String?
     @Published var hasStoredKey = false
     private let defaults: UserDefaults
     private let registryKey = "ai.provider.registry.v1"
@@ -104,14 +105,14 @@ private enum SettingsError: LocalizedError {
     func refreshKeyStatus() { hasStoredKey = (try? KeychainVault.exists(draft)) ?? false }
     func endpointChanged() {
         let cleared = !keyInput.isEmpty
-        keyInput = ""; models = []
+        keyInput = ""; models = []; diagnostic = nil
         status = cleared ? L("地址或接口已更改，请重新输入尚未保存的密钥。", "The address or API type changed. Re-enter the unsaved key.") : nil
         refreshKeyStatus()
     }
     func select(_ profile: ProviderProfile) {
         guard profile.id != draft.id else { return }
         guard !hasChanges else { error = SettingsError.unsaved.localizedDescription; return }
-        draft = profile; keyInput = ""; models = []; status = nil; refreshKeyStatus()
+        draft = profile; keyInput = ""; models = []; status = nil; diagnostic = nil; refreshKeyStatus()
     }
     func discard() { if let saved = registry.profiles.first(where: { $0.id == draft.id }) { draft = saved }; keyInput = ""; models = []; status = nil; refreshKeyStatus() }
     func add(_ profile: ProviderProfile) {
@@ -154,17 +155,42 @@ private enum SettingsError: LocalizedError {
     }
     func fetchModels() async {
         guard !isLoading else { return }
+        let started = Date()
+        let submitted = draft
+        let submittedKeyInput = keyInput
         do {
-            _ = try draft.config.endpoint("models")
-            let key = keyInput.isEmpty ? try KeychainVault.read(draft) ?? "" : keyInput
-            let submitted = draft
-            let client = AIClient(config: draft.config, key: key)
-            isLoading = true; defer { isLoading = false }
+            _ = try submitted.config.endpoint("models")
+            let key = submittedKeyInput.isEmpty ? try KeychainVault.read(submitted) ?? "" : submittedKeyInput
+            let client = AIClient(config: submitted.config, key: key)
+            isLoading = true; diagnostic = nil; defer { isLoading = false }
             let fetched = try await client.listModels()
-            guard draft == submitted else { return }
+            guard draft == submitted, keyInput == submittedKeyInput else { return }
             models = fetched
             status = fetched.isEmpty ? L("服务没有返回模型，可手动输入模型 ID。", "No models returned. You can enter a model ID manually.") : L("已获取 \(fetched.count) 个模型；是否支持文字生成取决于服务商。", "Loaded \(fetched.count) models. Text support depends on the provider.")
-        } catch { self.error = error.localizedDescription }
+        } catch {
+            guard draft == submitted, keyInput == submittedKeyInput else { return }
+            diagnostic = diagnosticMessage(operation: L("获取模型", "List models"), config: submitted.config, started: started, error: error)
+        }
+    }
+    func testConnection() async {
+        guard !isLoading else { return }
+        let started = Date()
+        let submitted = draft
+        let submittedKeyInput = keyInput
+        do {
+            _ = try submitted.config.endpoint("models")
+            let key = submittedKeyInput.isEmpty ? try KeychainVault.read(submitted) ?? "" : submittedKeyInput
+            let client = AIClient(config: submitted.config, key: key)
+            let type = AIFileType(fileExtension: "txt", current: nil, candidates: [AICandidate(id: "test_app", name: "Example Editor")])
+            let context = AIRequestContext(preference: "Recommend suitable text formats for Example Editor.", types: [type])
+            isLoading = true; diagnostic = nil; defer { isLoading = false }
+            _ = try await client.recommendations(for: context, responseLanguage: AppLanguage.usesChinese ? "Chinese" : "English")
+            guard draft == submitted, keyInput == submittedKeyInput else { return }
+            diagnostic = L("连接测试成功：模型返回了可解析的推荐结果。耗时 \(Int(Date().timeIntervalSince(started))) 秒。", "Connection test succeeded: the model returned a valid recommendation response. Elapsed: \(Int(Date().timeIntervalSince(started))) s.")
+        } catch {
+            guard draft == submitted, keyInput == submittedKeyInput else { return }
+            diagnostic = diagnosticMessage(operation: L("测试模型", "Test model"), config: submitted.config, started: started, error: error)
+        }
     }
 }
 
@@ -232,7 +258,7 @@ struct AISettingsView: View {
                                 Group {
                                     if showKey { TextField(L("输入 API Key", "Enter API key"), text: $settings.keyInput) }
                                     else { SecureField(L("输入 API Key", "Enter API key"), text: $settings.keyInput) }
-                                }.textFieldStyle(.roundedBorder)
+                                }.textFieldStyle(.roundedBorder).onChange(of: settings.keyInput) { _, _ in settings.diagnostic = nil }
                                 Button { showKey.toggle() } label: { Image(systemName: showKey ? "eye.slash" : "eye") }.accessibilityLabel(Text(L("显示或隐藏密钥", "Show or hide API key"))).help(L("显示或隐藏密钥", "Show or hide API key"))
                                 Button(L("删除密钥", "Delete key")) { if settings.hasStoredKey { confirmDeleteKey = true } else { settings.keyInput = "" } }.disabled(!settings.hasStoredKey && settings.keyInput.isEmpty)
                             }
@@ -241,7 +267,7 @@ struct AISettingsView: View {
                         }
                         field(L("模型", "Model")) {
                             HStack {
-                                TextField(L("输入模型 ID", "Enter model ID"), text: $settings.draft.config.model).textFieldStyle(.roundedBorder)
+                                TextField(L("输入模型 ID", "Enter model ID"), text: $settings.draft.config.model).textFieldStyle(.roundedBorder).onChange(of: settings.draft.config.model) { _, _ in settings.diagnostic = nil }
                                 Button(settings.isLoading ? L("获取中…", "Loading…") : L("获取模型", "Get models")) { Task { await settings.fetchModels() } }.disabled(settings.isLoading)
                             }
                             if !settings.models.isEmpty {
@@ -251,6 +277,11 @@ struct AISettingsView: View {
                                 }
                             }
                             Text(L("获取模型会连接此服务，不会发送文件关联信息。", "Fetching models connects to this service without sending file associations.")).font(.caption).foregroundStyle(.secondary)
+                        }
+                        field(L("连接诊断", "Connection diagnostics")) {
+                            Button(settings.isLoading ? L("请求中…", "Working…") : L("测试当前模型", "Test current model")) { Task { await settings.testConnection() } }.disabled(settings.isLoading)
+                            Text(L("发送一条固定测试请求，不包含你的文件关联；可能产生费用。", "Sends a fixed test request without your file associations; charges may apply.")).font(.caption).foregroundStyle(.secondary)
+                            if let diagnostic = settings.diagnostic { DiagnosticView(message: diagnostic) }
                         }
                     }.padding(18).frame(maxWidth: .infinity, alignment: .leading)
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)

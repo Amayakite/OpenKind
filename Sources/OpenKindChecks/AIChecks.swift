@@ -15,6 +15,12 @@ private func expectsError(_ message: String, _ body: () throws -> Void) {
     do { try body(); fputs("FAIL: \(message)\n", stderr); exit(1) } catch { }
 }
 func runAIChecks() async throws {
+    for (code, expected) in [(NSURLErrorTimedOut, "timeout"), (NSURLErrorCannotFindHost, "dns"), (NSURLErrorCannotConnectToHost, "connection"), (NSURLErrorServerCertificateUntrusted, "tls"), (NSURLErrorCancelled, "cancelled")] {
+        switch (SafeHTTPTransport.networkError(for: NSError(domain: NSURLErrorDomain, code: code)), expected) {
+        case (.timeout, "timeout"), (.dns, "dns"), (.connection, "connection"), (.tls, "tls"), (.cancelled, "cancelled"): break
+        default: fputs("FAIL: network error classification\n", stderr); exit(1)
+        }
+    }
     let official = ProviderConfiguration(mode: .openAI, baseURL: "https://api.openai.com/v1/", model: "test-model")
     let modelsURL = try official.endpoint("models")
     assertCheck(modelsURL.absoluteString == "https://api.openai.com/v1/models", "construct model endpoint")
@@ -34,6 +40,7 @@ func runAIChecks() async throws {
     let output = String(data: try JSONEncoder().encode(valid), encoding: .utf8)!
     let transport = MockTransport { request in
         assertCheck(request.url!.path == "/v1/responses", "OpenAI Responses endpoint")
+        assertCheck(request.timeoutInterval == 300, "generation gets a longer per-request timeout")
         assertCheck(request.value(forHTTPHeaderField: "Authorization") == "Bearer dummy-test-key", "authorization header")
         let json = try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]
         assertCheck(json["store"] as? Bool == false, "disable stored response")
@@ -49,11 +56,27 @@ func runAIChecks() async throws {
     }
     let compatibleResult = try await AIClient(config: local, key: "", transport: compatible).recommendations(for: context)
     assertCheck(compatibleResult == valid, "parse compatible result")
+    let keepAlive = MockTransport { request in
+        let (data, http) = try response(request, object: ["choices":[["finish_reason":"stop", "message":["content":output]]]])
+        return (Data("\n\n".utf8) + data, http)
+    }
+    let keepAliveResult = try await AIClient(config: local, key: "", transport: keepAlive).recommendations(for: context)
+    assertCheck(keepAliveResult == valid, "parse non-streaming keep-alive whitespace")
     let fenced = MockTransport { request in
         try response(request, object: ["choices":[["finish_reason":"stop", "message":["content":"```json\n\(output)\n```"]]]])
     }
     let fencedResult = try await AIClient(config: local, key: "", transport: fenced).recommendations(for: context)
     assertCheck(fencedResult == valid, "parse fenced JSON from compatible providers")
+    let arrayContent = MockTransport { request in
+        try response(request, object: ["choices":[["finish_reason":"stop", "message":["content":[["type":"text", "text":"{\"recommendations\":[]}"]]]]]])
+    }
+    let arrayResult = try await AIClient(config: local, key: "", transport: arrayContent).recommendations(for: context)
+    assertCheck(arrayResult.recommendations.isEmpty && arrayResult.notes.isEmpty, "parse text content arrays and optional notes")
+    let objectContent = MockTransport { request in
+        try response(request, object: ["choices":[["finish_reason":"stop", "message":["content":["recommendations":[]]]]]])
+    }
+    let objectResult = try await AIClient(config: local, key: "", transport: objectContent).recommendations(for: context)
+    assertCheck(objectResult.recommendations.isEmpty, "parse object content from compatible providers")
     let models = MockTransport { request in
         assertCheck(request.httpMethod == "GET" && request.url!.path == "/v1/models", "list models request")
         assertCheck(request.httpBody == nil, "model listing includes no file context")
@@ -81,8 +104,24 @@ func runAIChecks() async throws {
     }
     let truncated = MockTransport { request in try response(request, object: ["choices":[["finish_reason":"length", "message":["content":output]]]]) }
     do { _ = try await AIClient(config: local, key: "", transport: truncated).recommendations(for: context); throw AIError.invalidContext }
-    catch AIError.invalidResponse { }
+    catch AIError.responseProblem(.truncated) { }
     catch { fputs("FAIL: incomplete response handling\n", stderr); exit(1) }
+    for (body, expected) in [
+        (["choices":[["finish_reason":"stop", "message":["content":"   "]]]] as [String: Any], "empty"),
+        (["choices":[["finish_reason":"stop", "message":["content":"not json"]]]] as [String: Any], "json"),
+        (["error":["message":"dummy-private-response-secret"]] as [String: Any], "server"),
+        (["unexpected":"dummy-private-response-secret"] as [String: Any], "envelope")
+    ] {
+        let broken = MockTransport { request in try response(request, object: body) }
+        do { _ = try await AIClient(config: local, key: "", transport: broken).recommendations(for: context); throw AIError.invalidContext }
+        catch AIError.responseProblem(let problem) {
+            switch (problem, expected) {
+            case (.emptyContent, "empty"), (.invalidJSON, "json"), (.serverError, "server"), (.envelope, "envelope"): break
+            default: fputs("FAIL: classified response failure\n", stderr); exit(1)
+            }
+            assertCheck(!AIError.responseProblem(problem).localizedDescription.contains("dummy-private-response-secret"), "diagnostics exclude raw server content")
+        }
+    }
     var requestCount = 0
     var progressEvents: [Int] = []
     let manyTypes = (0..<45).map { AIFileType(fileExtension: "type\($0)", current: nil, candidates: [AICandidate(id: "selected_app", name: "Editor", registered: $0 % 2 == 0)]) }

@@ -48,6 +48,8 @@ open build/OpenKind.app
 
 OpenAI 模式使用 Responses 的结构化输出；兼容模式使用 Chat Completions 并校验 JSON。模型列表中的项目不一定都支持文字生成或结构化输出；遇到不兼容模型时请更换模型或服务。远程服务要求 HTTPS，本机 loopback 代理允许 HTTP；不会自动跟随重定向。建议仅在信任目标服务后输入密钥并发送数据。
 
+若遇到超时或无结果，在“服务设置”中使用“测试当前模型”：它发送固定的示例请求，验证模型能否返回可解析结果，不发送本机文件关联，可能产生 API 费用。获取模型、测试和推荐失败时会显示阶段、耗时和错误类型；推荐还显示失败批次。可复制诊断信息，其中不包含密钥、服务器响应原文或文件关联。第三方平台提供的 DeepSeek 模型需要使用该平台提供的基础地址、模型 ID 和对应接口类型。
+
 ### Language / 语言
 
 Open **Settings → Display language** to choose Follow system, 简体中文 or English. Changes apply immediately. macOS-provided application names and file-type descriptions may follow the operating system language.

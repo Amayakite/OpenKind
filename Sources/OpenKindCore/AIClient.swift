@@ -10,10 +10,22 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
 public final class SafeHTTPTransport: HTTPTransport {
     private let delegate = NoRedirect()
     public init() {}
+    public static func networkError(for error: NSError) -> AIError {
+        guard error.domain == NSURLErrorDomain else { return .network }
+        switch error.code {
+        case NSURLErrorCancelled: return .cancelled
+        case NSURLErrorTimedOut: return .timeout
+        case NSURLErrorCannotFindHost, NSURLErrorDNSLookupFailed: return .dns
+        case NSURLErrorCannotConnectToHost, NSURLErrorNotConnectedToInternet, NSURLErrorNetworkConnectionLost: return .connection
+        case NSURLErrorSecureConnectionFailed, NSURLErrorServerCertificateHasBadDate, NSURLErrorServerCertificateUntrusted, NSURLErrorServerCertificateHasUnknownRoot, NSURLErrorServerCertificateNotYetValid, NSURLErrorClientCertificateRejected, NSURLErrorClientCertificateRequired: return .tls
+        default: return .network
+        }
+    }
     public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 60
-        config.timeoutIntervalForResource = 90
+        // Generation can be slow, especially for reasoning models and queued services.
+        config.timeoutIntervalForRequest = request.httpMethod == "GET" ? 30 : 300
+        config.timeoutIntervalForResource = request.httpMethod == "GET" ? 60 : 600
         config.urlCache = nil
         config.httpCookieStorage = nil
         config.urlCredentialStorage = nil
@@ -26,7 +38,7 @@ public final class SafeHTTPTransport: HTTPTransport {
             return (data, http)
         } catch is CancellationError { throw AIError.cancelled }
           catch let e as AIError { throw e }
-          catch { if (error as NSError).code == NSURLErrorCancelled { throw AIError.cancelled }; throw AIError.network }
+          catch { throw Self.networkError(for: error as NSError) }
     }
 }
 
@@ -40,6 +52,7 @@ public struct AIClient {
     private func request(path: String, method: String, body: Data? = nil) throws -> URLRequest {
         var request = URLRequest(url: try config.endpoint(path))
         request.httpMethod = method
+        request.timeoutInterval = method == "GET" ? 30 : 300
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let body { request.httpBody = body; request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
         if !key.isEmpty { request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
@@ -57,7 +70,8 @@ public struct AIClient {
     public func listModels() async throws -> [String] {
         struct Response: Decodable { struct Item: Decodable { let id: String }; let data: [Item] }
         let data = try await fetch(request(path: "models", method: "GET"))
-        guard let parsed = try? JSONDecoder().decode(Response.self, from: data) else { throw AIError.invalidResponse }
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let error = object["error"], !(error is NSNull) { throw AIError.responseProblem(.serverError) }
+        guard let parsed = try? JSONDecoder().decode(Response.self, from: data) else { throw AIError.responseProblem(.envelope) }
         return Array(Set(parsed.data.map(\.id).filter { !$0.isEmpty && $0.count <= 200 })).sorted()
     }
     public func recommendationsBatched(for context: AIRequestContext, responseLanguage: String = "Chinese", progress: @escaping (Int, Int) -> Void = { _, _ in }) async throws -> AIResult {
@@ -98,22 +112,35 @@ public struct AIClient {
         }
         let requestBody = try JSONSerialization.data(withJSONObject: body)
         let data = try await fetch(request(path: path, method: "POST", body: requestBody))
-        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw AIError.invalidResponse }
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw AIError.responseProblem(.envelope) }
+        if object["error"] != nil && !(object["error"] is NSNull) { throw AIError.responseProblem(.serverError) }
         let text: String?
         switch config.mode {
         case .openAI:
-            guard object["status"] as? String == "completed", let output = object["output"] as? [[String: Any]] else { throw AIError.invalidResponse }
+            guard object["status"] as? String == "completed" else { throw AIError.responseProblem(.interrupted) }
+            guard let output = object["output"] as? [[String: Any]] else { throw AIError.responseProblem(.missingOutput) }
             let parts = output.filter { $0["type"] as? String == "message" }.flatMap { $0["content"] as? [[String: Any]] ?? [] }
             if parts.contains(where: { $0["type"] as? String == "refusal" }) { throw AIError.rejected }
             text = parts.first(where: { $0["type"] as? String == "output_text" })?["text"] as? String
         case .compatible:
-            guard let choices = object["choices"] as? [[String: Any]], let first = choices.first,
-                  first["finish_reason"] as? String == nil || first["finish_reason"] as? String == "stop",
-                  let message = first["message"] as? [String: Any] else { throw AIError.invalidResponse }
+            guard let choices = object["choices"] as? [[String: Any]], let first = choices.first else { throw AIError.responseProblem(.envelope) }
+            if let reason = first["finish_reason"] as? String, reason != "stop" {
+                if reason == "length" { throw AIError.responseProblem(.truncated) }
+                if reason == "content_filter" { throw AIError.responseProblem(.filtered) }
+                throw AIError.responseProblem(.interrupted)
+            }
+            guard let message = first["message"] as? [String: Any] else { throw AIError.responseProblem(.missingOutput) }
             if message["refusal"] as? String != nil { throw AIError.rejected }
-            text = message["content"] as? String
+            if let content = message["content"] as? String { text = content }
+            else if let parts = message["content"] as? [[String: Any]] {
+                text = parts.filter { $0["type"] as? String == "text" }.compactMap { $0["text"] as? String }.joined()
+            } else if let content = message["content"] as? [String: Any],
+                      let encoded = try? JSONSerialization.data(withJSONObject: content),
+                      let serialized = String(data: encoded, encoding: .utf8) {
+                text = serialized
+            } else { text = nil }
         }
-        guard let text, !text.isEmpty else { throw AIError.rejected }
+        guard let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw AIError.responseProblem(.emptyContent) }
         // Some compatible providers wrap an otherwise valid JSON object in a Markdown fence.
         var jsonText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if jsonText.hasPrefix("```") && jsonText.hasSuffix("```"), let newline = jsonText.firstIndex(of: "\n") {
@@ -122,7 +149,7 @@ public struct AIClient {
                 jsonText = String(jsonText[jsonText.index(after: newline)..<jsonText.index(jsonText.endIndex, offsetBy: -3)]).trimmingCharacters(in: .whitespacesAndNewlines)
             }
         }
-        guard let resultData = jsonText.data(using: .utf8), let parsed = try? JSONDecoder().decode(AIResult.self, from: resultData) else { throw AIError.invalidResponse }
+        guard let resultData = jsonText.data(using: .utf8), let parsed = try? JSONDecoder().decode(AIResult.self, from: resultData) else { throw AIError.responseProblem(.invalidJSON) }
         return try parsed.validated(for: context)
     }
 }

@@ -37,6 +37,7 @@ struct AssistantView: View {
     @State private var category: FileCategory?
     @State private var showAppPicker = false
     @State private var batchProgress = ""
+    @State private var diagnostic: String?
     @State private var showSettings = false
     @State private var preference = ""
     @State private var selectedTypes: Set<String> = ["docx", "xlsx", "pptx"]
@@ -124,6 +125,7 @@ struct AssistantView: View {
                         if working { ProgressView().controlSize(.small); Text(batchProgress.isEmpty ? L("正在处理…", "Working…") : batchProgress).font(.caption).foregroundStyle(.secondary); Button(L("停止", "Stop")) { task?.cancel() } }
                         Spacer()
                     }
+                    if let diagnostic { DiagnosticView(message: diagnostic) }
                     if let result, let request = lastRequest { resultsSection(result, request: request).id("suggestions") }
                     if result == nil && !applied.isEmpty { Button(L("尝试恢复之前的更改", "Try to restore previous changes")) { undo() }.disabled(working) }
                     if let info { Text(info).font(.caption).foregroundStyle(.secondary) }
@@ -236,11 +238,15 @@ struct AssistantView: View {
         guard request.profileID == settings.activeProfile?.id, request.config == settings.config else { error = L("服务设置已更改，请重新预览。", "Provider settings changed. Review the request again."); return }
         do {
             let client = try settings.client()
-            working = true; result = nil; applyResults = [:]; info = nil; batchProgress = ""
+            working = true; result = nil; applyResults = [:]; info = nil; batchProgress = ""; diagnostic = nil
+            let started = Date()
             task = Task { @MainActor in
                 defer { working = false; task = nil; batchProgress = "" }
+                var currentBatch = 0
+                var totalBatches = 0
                 do {
                     let response = try await client.recommendationsBatched(for: request.context, responseLanguage: AppLanguage.usesChinese ? "Chinese" : "English") { current, total in
+                        currentBatch = current; totalBatches = total
                         Task { @MainActor in batchProgress = L("正在分析 \(current) / \(total)…", "Analyzing \(current) / \(total)…") }
                     }
                     try Task.checkCancellation()
@@ -249,7 +255,10 @@ struct AssistantView: View {
                         guard let snapshot = request.snapshots[recommendation.fileExtension], !snapshot.unregisteredChoices.contains(recommendation.candidateID) else { return false }
                         return snapshot.currentURL?.standardizedFileURL != snapshot.choices[recommendation.candidateID]?.standardizedFileURL
                     }.map(\.fileExtension))
-                } catch { self.error = error.localizedDescription }
+                } catch {
+                    let batch = currentBatch > 0 ? L("失败批次：\(currentBatch) / \(totalBatches)", "Failed batch: \(currentBatch) / \(totalBatches)") : nil
+                    diagnostic = diagnosticMessage(operation: L("生成推荐", "Generate recommendations"), config: request.config, started: started, error: error, batch: batch)
+                }
             }
         } catch { self.error = error.localizedDescription }
     }
