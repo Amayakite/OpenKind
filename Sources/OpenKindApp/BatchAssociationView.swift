@@ -50,13 +50,18 @@ struct BatchAssociationView: View {
                     ForEach(FileCategory.allCases) { Text($0.localizedName).tag(Optional($0)) }
                 }.frame(width: 150)
             }
-            HStack {
+            VStack(alignment: .leading, spacing: 8) {
                 Toggle(L("显示其他类型", "Show other types"), isOn: $showAll).toggleStyle(.checkbox)
-                Spacer()
-                Button(L("选择当前列表中已识别的类型", "Select recognized types in this list")) {
-                    for item in visible where item.recognized && canSelect(item) { selected.insert(item.id) }
+                HStack {
+                    Button(L("全选当前列表", "Select all shown")) {
+                        for item in visible where canSelect(item) { selected.insert(item.id) }
+                    }
+                    Button(L("仅选已识别", "Select recognized")) {
+                        for item in visible where item.recognized && canSelect(item) { selected.insert(item.id) }
+                    }
+                    Spacer()
+                    Button(L("清空", "Clear")) { selected.removeAll() }.disabled(selected.isEmpty)
                 }
-                Button(L("清空", "Clear")) { selected.removeAll() }.disabled(selected.isEmpty)
             }.disabled(working)
             ScrollView {
                 LazyVStack(spacing: 0) {
@@ -76,7 +81,7 @@ struct BatchAssociationView: View {
                     }
                     if visible.isEmpty { Text(L("当前范围没有文件类型。", "No file types in this view.")).foregroundStyle(.secondary).padding(24) }
                 }
-            }.background(Color.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 9))
+            }.frame(maxHeight: .infinity).background(Color.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 9))
             Text(L("多个扩展名可能共享同一系统类型；修改一项可能影响其他扩展名。已完成的更改不会自动撤销。", "Extensions may share a system type, so other extensions can be affected. Completed changes are not automatically undone.")).font(.caption).foregroundStyle(.secondary)
             if let message { Text(message).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
             HStack {
@@ -86,7 +91,7 @@ struct BatchAssociationView: View {
                 Button(L("关闭", "Close")) { dismiss() }.disabled(working)
                 Button(L("应用关联…", "Apply associations…")) { confirm = true }.buttonStyle(.borderedProminent).disabled(working || selected.isEmpty)
             }
-        }.padding(24).frame(width: 700, height: 600)
+        }.padding(20).frame(minWidth: 520, minHeight: 440)
         .onAppear { load() }
         .alert(L("确认更改默认应用？", "Change default apps?"), isPresented: $confirm) {
             Button(L("取消", "Cancel"), role: .cancel) { }

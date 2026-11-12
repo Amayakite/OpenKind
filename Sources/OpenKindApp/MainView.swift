@@ -41,6 +41,7 @@ struct MainView: View {
     private func associated(_ app: URL) -> [FileAssociation] { store.items.filter { $0.appURL?.standardizedFileURL == app.standardizedFileURL } }
 
     var body: some View {
+      GeometryReader { geometry in
         HStack(spacing: 0) {
             sidebar
             Rectangle().fill(Design.line).frame(width: 1)
@@ -54,15 +55,20 @@ struct MainView: View {
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Design.canvas)
         }
-        .frame(minWidth: 940, minHeight: 620)
         .environment(\.locale, language == "system" ? .autoupdatingCurrent : Locale(identifier: language))
         .onAppear { store.reload(); appCatalog.reload(extra: store.items.compactMap(\.appURL)) }
         .sheet(item: $selectedType) { item in AppPicker(item: item, store: store) }
-        .sheet(isPresented: $showBatch) { if let app = selectedApp { BatchAssociationView(app: app, store: store) } }
+        .sheet(isPresented: $showBatch) {
+            if let app = selectedApp {
+                BatchAssociationView(app: app, store: store)
+                    .frame(width: min(700, max(520, geometry.size.width - 40)), height: min(600, max(440, geometry.size.height - 55)))
+            }
+        }
         .sheet(isPresented: $showAdd) { addSheet }
         .alert(L("无法完成操作", "Could not complete the action"), isPresented: Binding(get: { store.errorMessage != nil }, set: { if !$0 { store.errorMessage = nil } })) {
             Button(L("好", "OK")) { store.errorMessage = nil }
         } message: { Text(store.errorMessage ?? "") }
+      }.frame(minWidth: 820, minHeight: 550)
     }
 
     private var sidebar: some View {
@@ -195,13 +201,17 @@ struct MainView: View {
             Rectangle().fill(Design.line).frame(width: 1)
             if let app = selectedApp {
                 VStack(alignment: .leading, spacing: 0) {
-                    HStack(spacing: 12) {
-                        ApplicationIcon(url: app, size: 43)
-                        VStack(alignment: .leading, spacing: 4) { Text(appName(app)).font(.system(size: 16, weight: .semibold)); Text(L("当前是 \(associated(app).count) 种列表内格式的默认应用", "Default for \(associated(app).count) listed file types")).font(.system(size: 11)).foregroundStyle(.secondary)
-                            Text(appCatalog.apps.first(where: { $0.id == app })?.hasDocumentDeclarations == true ? L("应用声明了文件类型", "The app declares document types") : L("未声明文件类型，仍可能支持打开文件", "No document types declared; it may still open files")).font(.system(size: 10)).foregroundStyle(.secondary) }
-                        Spacer()
-                        Button(L("关联文件类型…", "Associate file types…")) { showBatch = true }.disabled(store.isApplying)
-                    }.padding(18)
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .center, spacing: 12) {
+                            appDetails(app)
+                            Spacer(minLength: 8)
+                            associateButton
+                        }.fixedSize(horizontal: true, vertical: false)
+                        VStack(alignment: .leading, spacing: 12) {
+                            appDetails(app)
+                            associateButton
+                        }
+                    }.frame(maxWidth: .infinity, alignment: .leading).padding(18)
                     Divider()
                     ScrollView { LazyVStack(spacing: 0) {
                         if associated(app).isEmpty { Text(L("该应用当前不是列表中任何类型的默认应用；这不代表它不支持文件。", "This app is not the default for any listed types; it may still support files.")).font(.callout).foregroundStyle(.secondary).padding(24) }
@@ -215,6 +225,19 @@ struct MainView: View {
         }.background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
             .clipShape(RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).stroke(Design.line))
             .padding(.horizontal, 32).padding(.top, 20).padding(.bottom, 14).frame(maxHeight: .infinity)
+    }
+    private func appDetails(_ app: URL) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            ApplicationIcon(url: app, size: 43)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(appName(app)).font(.system(size: 16, weight: .semibold)).lineLimit(1)
+                Text(L("当前是 \(associated(app).count) 种列表内格式的默认应用", "Default for \(associated(app).count) listed file types")).font(.system(size: 11)).foregroundStyle(.secondary)
+                Text(appCatalog.apps.first(where: { $0.id == app })?.hasDocumentDeclarations == true ? L("应用声明了文件类型", "The app declares document types") : L("未声明文件类型，仍可能支持打开文件", "No document types declared; it may still open files")).font(.system(size: 10)).foregroundStyle(.secondary)
+            }
+        }
+    }
+    private var associateButton: some View {
+        Button(L("关联文件类型…", "Associate file types…")) { showBatch = true }.disabled(store.isApplying)
     }
     private func chooseOtherApplication() {
         let panel = NSOpenPanel()
