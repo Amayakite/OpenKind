@@ -56,7 +56,7 @@ struct BatchAssociationView: View {
                     Button(L("全选当前列表", "Select all shown")) {
                         for item in visible where canSelect(item) { selected.insert(item.id) }
                     }
-                    Button(L("仅选已识别", "Select recognized")) {
+                    Button(L("选中已识别", "Select recognized")) {
                         for item in visible where item.recognized && canSelect(item) { selected.insert(item.id) }
                     }
                     Spacer()
