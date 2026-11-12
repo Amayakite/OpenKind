@@ -1,3 +1,5 @@
+<img src="Assets/AppIcon.png" width="96" alt="OpenKind 图标">
+
 # OpenKind
 
 一个轻巧的 macOS 默认应用管理工具。按文件类型找到当前的打开方式，或按应用查看它负责的文件类型。
@@ -39,7 +41,7 @@ OpenKind 通过 macOS `NSWorkspace` 和 `UTType` 读取、修改当前用户的�
 - `Sources/OpenKindCore`：扩展名目录、分类和输入校验。
 - `Sources/OpenKindApp`：SwiftUI 界面与系统默认应用操作。
 - `Sources/OpenKindChecks`：无需完整 Xcode 的核心逻辑检查。
-- `Assets/AppIcon.icns`：应用图标；`scripts/make-icon.swift` 可重新生成图标集。
+- `Assets/AppIcon.icns` 和 `Assets/AppIcon.png`：应用图标和预览；`scripts/make-icon.swift` 可重新生成图标集。
 - `scripts/build-app.sh`：构建并本地签名应用包。
 - `.github/workflows/ci.yml`：macOS 构建和核心逻辑检查。
 
